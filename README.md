@@ -202,3 +202,7 @@ This tool was developed for analyzing PIEZO1 mechanosensitive ion channel distri
 ## Contact
 
 For questions and support, please open an issue on the GitHub repository.
+
+
+---
+*Built with AI assistance from [Claude (Anthropic)](https://claude.com/).*
