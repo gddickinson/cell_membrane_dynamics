@@ -108,105 +108,57 @@ class CurvatureAnalyzer:
         return curvatures
 
     def _circle_fit_curvature(self, contour: np.ndarray) -> np.ndarray:
-        """Calculate curvature by fitting circles to segments.
-        
+        """Calculate curvature by fitting a circle to the segment_length points centred on each point.
+
+        Algebraic least-squares circle fit (Kasa): x^2 + y^2 + D x + E y + F = 0 on the segment in nm, centred on its
+        mean; radius r = sqrt(D^2/4 + E^2/4 - F), curvature 1/r (nm^-1). Sign: positive when the circle's centre lies
+        on the cell-interior side of the segment (convex), negative otherwise, using the contour's orientation.
+        Points whose fit gives r below segment_length * pixel_size / 4 (too tight to be resolved), or a degenerate
+        fit (collinear points: zero curvature), get 0.
+
         Args:
             contour: Contour points
-            
+
         Returns:
             Curvature at each point
         """
+        contour = np.asarray(contour, dtype=float)
         n_points = len(contour)
         curvatures = np.zeros(n_points)
         half_segment = self.segment_length // 2
-        
+        orient = orientation_sign(contour)
+        min_radius = (self.segment_length * self.pixel_size) / 4
+
         for i in range(n_points):
-            # Get segment centered at current point
             indices = np.arange(i - half_segment, i + half_segment + 1) % n_points
             segment = contour[indices]
-            
             if len(segment) < 3:
                 continue
-                
-            # Fit circle to segment
+            mean = segment.mean(axis=0)
+            centred = (segment - mean) * self.pixel_size        # nm
+            x, y = centred[:, 0], centred[:, 1]
+            A = np.column_stack([x, y, np.ones_like(x)])
             try:
-                # Translate segment to origin
-                center = segment.mean(axis=0)
-                centered = segment - center
-                
-                # Scale to nm
-                centered_nm = centered * self.pixel_size
-                
-                # Apply algebraic circle fitting (Taubin method)
-                x = centered_nm[:, 0]
-                y = centered_nm[:, 1]
-                z = x*x + y*y
-                
-                # Check for valid values
-                if np.any(np.isnan(z)) or np.any(np.isinf(z)):
-                    continue
-                
-                # Create design matrix
-                ZXY = np.column_stack((z, x, y))
-                A = np.dot(ZXY.T, ZXY)
-                
-                # Constraint matrix
-                B = np.array([[4, 0, 0], [0, 1, 0], [0, 0, 1]])
-                
-                # Solve generalized eigenvalue problem
-                eigenvalues, eigenvectors = np.linalg.eig(np.dot(np.linalg.inv(B), A))
-                
-                # Get eigenvector corresponding to smallest eigenvalue
-                v = eigenvectors[:, np.argmin(np.abs(eigenvalues))]
-                
-                # Check for valid eigenvector
-                if np.any(np.isnan(v)) or np.any(np.isinf(v)) or np.abs(v[0]) < 1e-10:
-                    continue
-                
-                # Calculate center (a, b) and radius r of fitted circle
-                a = -v[1]/(2*v[0])
-                b = -v[2]/(2*v[0])
-                
-                # Calculate radius (now in nm)
-                r = np.sqrt(a*a + b*b - v[0]/v[2])
-                
-                # Verify the fit is reasonable
-                min_radius = (self.segment_length * self.pixel_size) / 4
-                if (not np.isfinite(r) or r < min_radius):
-                    continue
-                
-                # Determine sign of curvature (whether the curve is concave or convex)
-                # This requires determining if center is "inside" or "outside" the curve
-                
-                # Calculate normal vector at center point
-                segment_dir = segment[-1] - segment[0]
-                normal = np.array([-segment_dir[1], segment_dir[0]])
-                normal_norm = np.linalg.norm(normal)
-                
-                if normal_norm < 1e-10:
-                    continue
-                    
-                normal = normal / normal_norm
-                
-                # Convert center back to pixel space for comparison
-                center_point = np.array([a, b]) / self.pixel_size + center
-                
-                # Vector from mean point to center of the circle
-                to_center = center_point - segment.mean(axis=0)
-                to_center_norm = np.linalg.norm(to_center)
-                
-                if to_center_norm > 0:
-                    # Curvature is positive when curve bulges in the direction of normal
-                    sign = np.sign(np.dot(to_center/to_center_norm, normal))
-                    
-                    # Curvature = 1/radius (with sign)
-                    curvatures[i] = sign * (1/r)
-                else:
-                    curvatures[i] = 0
-                    
-            except (np.linalg.LinAlgError, ZeroDivisionError, ValueError):
-                curvatures[i] = 0
-                
+                (D, E, F), _, rank, _ = np.linalg.lstsq(A, -(x * x + y * y), rcond=None)
+            except np.linalg.LinAlgError:
+                continue
+            if rank < 3:
+                continue
+            r2 = D * D / 4 + E * E / 4 - F
+            if not np.isfinite(r2) or r2 <= 0:
+                continue
+            r = np.sqrt(r2)
+            if r < min_radius:
+                continue
+            centre = np.array([-D / 2, -E / 2])                 # nm, relative to the segment mean
+            tangent = segment[-1] - segment[0]
+            # OpenCV-ordered outer contours (orient = +1) have the interior on the right of the direction of travel
+            # in image x/y: inward normal (ty, -tx); the other order flips it
+            inward = orient * np.array([tangent[1], -tangent[0]])
+            side = np.dot(centre, inward)
+            if side == 0:
+                continue
+            curvatures[i] = np.sign(side) / r
         return curvatures
 
     def _spline_curvature(self, contour: np.ndarray) -> np.ndarray:

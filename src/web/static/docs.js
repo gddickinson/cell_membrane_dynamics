@@ -63,11 +63,6 @@ python run_web.py      # http://127.0.0.1:8148</code></pre>
       <p class="small">The local web app adds the Python engine (the repo's own pipeline), including Lucas–Kanade optical flow on the
         PIEZO1 stack and compressed TIFFs. The static site (GitHub Pages) runs the JavaScript port only.</p></div>
   </div>
-  <div class="panel"><h2>Open points for the author</h2>
-    <ul class="small">
-      <li><code>CurvatureAnalyzer</code>'s circle-fit method (not used by the app) fits circles through the segment centroid and computes the
-        radius from a dimensionless ratio; it is not offered here.</li>
-    </ul></div>
   <div class="panel"><h2>Credits</h2>
     <p>Developed for analysing PIEZO1 mechanosensitive ion channel distribution in relation to membrane dynamics and curvature in TIRF
       microscopy data. © 2025 George Dickinson, MIT licence. Built with AI assistance from Claude (Anthropic). The demo stack on this site

@@ -108,3 +108,25 @@ def test_velocities_pair_with_every_current_point():
     b = ed.detect_edge((((xx - 102) / 47.0) ** 2 + ((yy - 99) / 44.0) ** 2 < 1).astype(np.uint8))
     m = _motion(a, b)
     assert len(m.velocities) == len(m.classifications) == len(b)
+
+
+# --- 4. circle-fit curvature ----------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("r", [8.0, 25.0, 60.0])
+@pytest.mark.parametrize("clockwise", [False, True])
+def test_circle_fit_curvature_is_one_over_r(r, clockwise):
+    an = CurvatureAnalyzer(pixel_size=100.0, segment_length=9)
+    k = an.calculate_curvature(circle(r, n=int(2 * np.pi * r), clockwise=clockwise), method="circle_fit")
+    assert np.all(k > 0)
+    assert np.allclose(k, 1 / (r * 100.0), rtol=1e-6)
+
+
+def test_circle_fit_sign_on_a_dent():
+    yy, xx = np.mgrid[:200, :200]
+    shape = ((xx - 100) ** 2 + (yy - 100) ** 2 < 50 ** 2) & ~((xx - 150) ** 2 + (yy - 100) ** 2 < 20 ** 2)
+    c = EdgeDetector(smoothing_sigma=2.0).detect_edge(shape.astype(np.uint8))
+    k = CurvatureAnalyzer(pixel_size=100.0, segment_length=9).calculate_curvature(c, method="circle_fit")
+    dent = np.hypot(c[:, 0] - 150, c[:, 1] - 100) < 21
+    far = np.hypot(c[:, 0] - 150, c[:, 1] - 100) > 35
+    assert np.median(k[far]) > 0 and np.median(k[dent]) < 0
+    assert np.median(k[far]) == pytest.approx(1 / (50 * 100.0), rel=0.15)
