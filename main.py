@@ -556,6 +556,8 @@ class MainWindow(QMainWindow):
         # Update smoothing value display
         smoothing_value = self.smoothing_slider.value() / 10.0
         self.smoothing_value_label.setText(f"{smoothing_value:.1f}")
+        # The slider sets the Gaussian sigma (in contour points) used to smooth the detected edge
+        self.edge_detector.smoothing_sigma = smoothing_value
 
         # Update analyzers with new parameters
         self.dynamics_tracker = DynamicsTracker(
