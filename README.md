@@ -2,7 +2,7 @@
 
 A Python-based application for analyzing PIEZO1 protein distribution and membrane dynamics using TIRF microscopy data.
 
-![Application Screenshot](screenshot.png)
+![Web interface: the analysis of the synthetic demo stack](docs/img/analyse.png)
 
 ## Overview
 
@@ -191,6 +191,32 @@ PIEZO1 sequence is currently used for the Lucas-Kanade optical flow that refines
 - **Missing motion data for first frame**: Normal, as motion requires two frames
 - **Border artifacts**: Increase the border margin (30 px) in `src/analysis/edge_detection.py` if needed
 - **Performance issues**: Reduce frame range, use fewer sample points
+
+## Web interface
+
+**Live site:** https://gddickinson.github.io/cell_membrane_dynamics/
+
+The same analysis runs in a web page on your own cell-mask TIFF stack (plus an optional PIEZO1 stack): cell edge,
+curvature (µm⁻¹), edge motion (µm/s) and movement classes, the curvature / normal-velocity correlation per frame,
+a kymograph and CSV export, with the pixel size in µm/px (read from ImageJ/OME metadata when the file has it) and the
+frame interval in s. On the static site everything runs in the browser through a JavaScript port of
+`src/analysis/` (node-tested against the Python code; see the "JS vs Python" page); files are not uploaded. A
+synthetic demo stack (`src/web/demo_data.py`, clearly labelled, not real data) is included.
+
+### Run the web app
+
+```bash
+pip install -r requirements.txt -r requirements-web.txt
+python run_web.py          # http://127.0.0.1:8148
+```
+
+The local app adds a Python engine (the repo's own `src/analysis/pipeline.py`), including the Lucas–Kanade optical
+flow on the PIEZO1 stack and compressed TIFFs. Tests: `python -m pytest -q tests` (includes the node tests of the JS
+ports). Static build: `python scripts/build_static.py` (published by `.github/workflows/pages.yml`).
+
+| Home | Analyse | Over time | JS vs Python |
+|---|---|---|---|
+| ![Home](docs/img/home.png) | ![Analyse](docs/img/analyse.png) | ![Over time](docs/img/over_time.png) | ![JS vs Python](docs/img/check.png) |
 
 ## License
 

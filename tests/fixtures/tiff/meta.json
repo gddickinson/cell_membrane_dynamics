@@ -1,0 +1,30 @@
+{
+ "shaped_u16.tif": {
+  "dtype": "uint16",
+  "umPerPx": null,
+  "frameS": null
+ },
+ "planar_u16.tif": {
+  "dtype": "uint16",
+  "umPerPx": null,
+  "frameS": null
+ },
+ "imagej_u16.tif": {
+  "dtype": "uint16",
+  "umPerPx": 0.16,
+  "frameS": 2.5
+ },
+ "ome_u8.ome.tif": {
+  "dtype": "uint8",
+  "umPerPx": 0.108,
+  "frameS": 0.5
+ },
+ "bigendian_f32.tif": {
+  "dtype": "float32",
+  "umPerPx": null,
+  "frameS": null
+ },
+ "zlib_u16.tif": {
+  "error": "compressed"
+ }
+}

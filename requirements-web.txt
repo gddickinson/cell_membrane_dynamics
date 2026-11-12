@@ -1,0 +1,13 @@
+# Web interface (python run_web.py) and its tests; versions pinned to those the web app was built and tested with.
+fastapi==0.162.2
+httpx==0.28.1
+pytest==9.2.0
+uvicorn==0.54.0
+python-multipart==0.0.33
+numpy==2.5.4
+scipy==1.18.1
+opencv-python-headless==5.0.0.93
+scikit-image==0.26.0
+tifffile==2026.11.8
+pandas==3.1.1
+matplotlib==3.11.2

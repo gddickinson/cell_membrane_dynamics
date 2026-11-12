@@ -83,7 +83,7 @@ def test_gui_loads_every_page_of_a_multipage_tiff(window, tmp_path):
     tifffile = pytest.importorskip("tifffile")
     stack = np.stack([_disk(20 + i, 100) * 255 for i in range(4)]).astype(np.uint8)
     f = tmp_path / "cell_1_masks.tif"
-    tifffile.imwrite(f, stack)
+    tifffile.imwrite(f, stack, photometric="minisblack")
     window._load_image_sequence(str(f), is_mask=True)
     assert len(window.masks) == 4
     assert np.array_equal(window.masks[2], stack[2])
