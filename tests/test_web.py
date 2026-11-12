@@ -2,6 +2,7 @@
 
 Run: python -m pytest -q tests/test_web.py
 """
+import os
 import shutil
 import subprocess
 import sys
@@ -81,6 +82,9 @@ def _close(a, b, path=""):
         assert a == b, path
 
 
+@pytest.mark.skipif(bool(os.environ.get("CI")), reason=(
+    "regenerating the fixture builds blob masks and contours from float maths; libm differences on the Linux CI runner "
+    "flip boundary pixels (contour areas differ) (the node JS-vs-fixture tests still run)"))
 def test_engine_fixture_is_current():
     sys.path.insert(0, str(ROOT / "scripts"))
     import make_engine_fixture
