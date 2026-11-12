@@ -157,7 +157,7 @@ Membrane motion is tracked using:
 
 ### Border Handling
 
-The application automatically excludes image borders from analysis to prevent artifacts. Points within 40 pixels of image edges are ignored.
+The application automatically excludes image borders from analysis to prevent artifacts. Mask pixels within 30 pixels of the image edges are ignored when the cell edge is detected (`EdgeDetector.detect_edge`).
 
 ### Multi-frame Analysis
 
@@ -170,8 +170,9 @@ Process entire sequences with:
 
 Investigate relationships between:
 - Curvature and normal velocity
-- Curvature and PIEZO1 intensity
-- Movement class and PIEZO1 distribution
+
+Correlating curvature and movement class with PIEZO1 intensity along the edge is planned but not yet implemented: the
+PIEZO1 sequence is currently used for the Lucas-Kanade optical flow that refines the edge velocities.
 
 ## Example Workflow
 
@@ -188,7 +189,7 @@ Investigate relationships between:
 
 - **No contour detected**: Adjust binary mask or check image format
 - **Missing motion data for first frame**: Normal, as motion requires two frames
-- **Border artifacts**: Increase border margin in source code if needed
+- **Border artifacts**: Increase the border margin (30 px) in `src/analysis/edge_detection.py` if needed
 - **Performance issues**: Reduce frame range, use fewer sample points
 
 ## License
