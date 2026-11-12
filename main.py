@@ -23,6 +23,7 @@ from src.analysis.optical_flow import OpticalFlowAnalyzer
 from src.analysis.correlation_analyzer import CorrelationAnalyzer, CorrelationData
 from src.analysis.curvature_analyzer import CurvatureAnalyzer
 from src.utils.image_utils import load_tiff_stack
+from src.analysis.pipeline import analyze_sequence, finite_difference_curvature, contour_normals
 
 class MainWindow(QMainWindow):
     """Main window for membrane dynamics analysis application."""
@@ -644,81 +645,26 @@ class MainWindow(QMainWindow):
             self.progress_bar.setVisible(True)
             self.progress_bar.setValue(0)
 
-            # Clear previous results
-            self.contours = []
-            self.curvatures = []
-            self.motion_data = []
-            self.correlation_data = []
-
-            # Initialize dynamics tracker
+            # Run the shared, Qt-free pipeline (src/analysis/pipeline.py)
             smoothing_value = self.smoothing_slider.value() / 10.0
-            self.dynamics_tracker = DynamicsTracker(
-                contour_smoothing=smoothing_value,
-                pixel_size=self.pixel_size
-            )
-            self.dynamics_tracker.set_time_delta(self.time_delta)
-
-            # Calculate total frames to process
             total_frames = end_frame - start_frame + 1
 
-            # Process each frame in the selected range
-            for i in range(start_frame, end_frame + 1):
-                # Update progress based on frames in range
-                progress = int(((i - start_frame) / total_frames) * 100)
-                self.progress_bar.setValue(progress)
-                self.statusBar().showMessage(f"Processing frame {i+1}/{end_frame+1}...")
+            def report(i, first, last):
+                self.progress_bar.setValue(int(((i - first) / total_frames) * 100))
+                self.statusBar().showMessage(f"Processing frame {i+1}/{last+1}...")
                 QApplication.processEvents()  # Keep UI responsive
 
-                # Get current frame and mask
-                mask = self.masks[i].copy()
-                frame = self.frames[i].copy()
-
-                # Make sure mask is binary
-                if mask.max() > 1:
-                    mask = (mask > 0).astype(np.uint8) * 255
-
-                # Detect cell edge
-                contour = self._detect_cell_edge(mask)
-                if contour is None or len(contour) < 5:
-                    self.statusBar().showMessage(f"Failed to detect edge in frame {i+1}")
-                    continue
-
-                self.contours.append(contour)
-
-                # Calculate curvature
-                curvature = self._calculate_curvature(contour)
-                self.curvatures.append(curvature)
-
-                # Track membrane dynamics
-                if i == start_frame:
-                    # First frame, just store it
-                    motion = self.dynamics_tracker.analyze_frame(frame, contour)
-                    self.motion_data.append(None)  # No motion data for first frame
-                else:
-                    # Calculate dynamics between previous and current frame
-                    motion = self.dynamics_tracker.analyze_frame(frame, contour)
-                    self.motion_data.append(motion)
-
-                    # Calculate correlation between curvature and motion
-                    if motion is not None and len(curvature) == len(contour):
-                        # Make sure we're using the same number of points for both analyses
-                        min_length = min(len(curvature), len(motion.velocities))
-
-                        dynamics_data = {
-                            'velocities': motion.velocities[:min_length],
-                            'normal_components': np.array([np.dot(v, n) for v, n in zip(motion.velocities[:min_length], self._calculate_normals(contour)[:min_length])]),
-                            'tangential_components': np.array([np.dot(v, [-n[1], n[0]]) for v, n in zip(motion.velocities[:min_length], self._calculate_normals(contour)[:min_length])]),
-                            'classifications': motion.classifications[:min_length],
-                            'points': contour[:min_length]
-                        }
-
-                        # Ensure curvature data is also truncated to match
-                        curvature = curvature[:min_length]
-
-                        corr_data = self.correlation_analyzer.analyze_correlation(
-                            curvature, dynamics_data, i
-                        )
-                        self.correlation_data.append(corr_data)
+            result = analyze_sequence(
+                self.masks, self.frames, pixel_size=self.pixel_size, time_delta=self.time_delta,
+                smoothing=smoothing_value, start=start_frame, end=end_frame, progress=report,
+                edge_detector=self.edge_detector)
+            self.contours = result['contours']
+            self.curvatures = result['curvatures']
+            self.motion_data = result['motion_data']
+            self.correlation_data = result['correlation_data']
+            self.dynamics_tracker = result['tracker']
+            if result['failed']:
+                print(f"No edge detected in frame(s): {[i + 1 for i in result['failed']]}")
 
             # Analysis complete
             self.progress_bar.setValue(100)
@@ -756,86 +702,12 @@ class MainWindow(QMainWindow):
         return edge_data
 
     def _calculate_curvature(self, contour):
-        """Calculate curvature along the contour."""
-        n_points = len(contour)
-        curvatures = np.zeros(n_points)
-
-        for i in range(n_points):
-            # Use points before and after for curvature calculation
-            prev_idx = (i - 1) % n_points
-            next_idx = (i + 1) % n_points
-
-            # Get points
-            prev = contour[prev_idx]
-            curr = contour[i]
-            next_pt = contour[next_idx]
-
-            # Calculate curvature using finite differences
-            try:
-                dx1 = curr[0] - prev[0]
-                dy1 = curr[1] - prev[1]
-                dx2 = next_pt[0] - curr[0]
-                dy2 = next_pt[1] - curr[1]
-
-                # First derivatives
-                dx = (dx1 + dx2) / 2
-                dy = (dy1 + dy2) / 2
-
-                # Second derivatives
-                d2x = dx2 - dx1
-                d2y = dy2 - dy1
-
-                # Curvature formula
-                num = dx * d2y - dy * d2x
-                denom = (dx**2 + dy**2)**(1.5)
-
-                if abs(denom) > 1e-10:
-                    # Curvature with sign (negative = convex, positive = concave)
-                    # Convert to nm^-1
-                    curvatures[i] = -num / denom / self.pixel_size
-                else:
-                    curvatures[i] = 0
-            except:
-                curvatures[i] = 0
-
-        return curvatures
+        """Calculate curvature (nm^-1) along the contour."""
+        return finite_difference_curvature(contour, self.pixel_size)
 
     def _calculate_normals(self, contour):
         """Calculate normal vectors along contour."""
-        n_points = len(contour)
-        normals = np.zeros((n_points, 2))
-
-        for i in range(n_points):
-            # Use neighboring points
-            prev_idx = (i - 1) % n_points
-            next_idx = (i + 1) % n_points
-
-            # Calculate tangent using central difference
-            tangent = contour[next_idx] - contour[prev_idx]
-            tangent_norm = np.linalg.norm(tangent)
-
-            if tangent_norm > 0:
-                tangent = tangent / tangent_norm
-
-                # Normal is perpendicular to tangent
-                normal = np.array([-tangent[1], tangent[0]])
-
-                # Ensure normal points inward (approximate)
-                center = np.mean(contour, axis=0)
-                to_center = center - contour[i]
-                to_center_norm = np.linalg.norm(to_center)
-
-                if to_center_norm > 0:
-                    to_center = to_center / to_center_norm
-                    if np.dot(normal, to_center) < 0:
-                        normal = -normal
-
-                normals[i] = normal
-            else:
-                # Fallback for degenerate case
-                normals[i] = np.array([0, 0])
-
-        return normals
+        return contour_normals(contour)
 
     def update_visualization(self):
         """Update the main visualization based on current display mode."""
