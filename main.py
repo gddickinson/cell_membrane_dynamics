@@ -1252,10 +1252,10 @@ class MainWindow(QMainWindow):
 
         # Add second axis for velocity
         ax2_twin = ax2.twinx()
-        ax2_twin.plot(frames, mean_velocities, 'g--', linewidth=2, label='Velocity (nm/s)')
+        ax2_twin.plot(frames, mean_velocities, 'g--', linewidth=2, label='Velocity (px/s)')
 
         ax2.set_ylabel('Mean Curvature (nm⁻¹)', color='r')
-        ax2_twin.set_ylabel('Mean Velocity (nm/s)', color='g')
+        ax2_twin.set_ylabel('Mean Velocity (px/s)', color='g')
         ax2.set_title('Mean Curvature and Velocity vs Time')
         ax2.grid(True, alpha=0.3)
 

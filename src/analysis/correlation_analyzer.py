@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # src/analysis/correlation_analyzer.py
 
+import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Dict, List, Tuple, Optional
@@ -174,7 +175,7 @@ class CorrelationAnalyzer:
             ax1.plot(x_range, p(x_range), 'r--', alpha=0.7)
         
         ax1.set_xlabel('Curvature (nm⁻¹)')
-        ax1.set_ylabel('Normal Velocity (nm/s)')
+        ax1.set_ylabel('Normal Velocity (px/s)')
         ax1.set_title(f'Curvature vs. Normal Velocity\nr = {correlation_data.correlation:.3f}, p = {correlation_data.p_value:.4f}')
         ax1.legend()
         ax1.grid(True, alpha=0.3)
@@ -195,7 +196,7 @@ class CorrelationAnalyzer:
         ax3.plot(x, correlation_data.tangential_velocities, 'g-', 
                label='Tangential', linewidth=2)
         ax3.set_xlabel('Contour Position')
-        ax3.set_ylabel('Velocity (nm/s)')
+        ax3.set_ylabel('Velocity (px/s)')
         ax3.set_title('Velocity Components')
         ax3.legend()
         ax3.grid(True, alpha=0.3)
