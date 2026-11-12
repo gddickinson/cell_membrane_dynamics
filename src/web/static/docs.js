@@ -25,7 +25,7 @@ route('methods', async () => {
       is approximate when the edge rotates or that pixel jumps; tangential "flowing" motion is partly a result of this pairing.</p>
     <p>The Python pipeline then measures Lucas–Kanade optical flow (OpenCV) on the PIEZO1 frames at the edge points and, wherever flow is
       found, uses ${d.flow_weight} × flow + ${d.contour_weight} × contour velocity. That step needs OpenCV and runs only in the local app; without a
-      PIEZO1 stack the result equals the browser's. (Its 16-bit images are converted to 8 bit by a plain cast in the current code; see About.)</p>
+      PIEZO1 stack the result equals the browser's. 16-bit frames are scaled to 8 bit by the pair's joint intensity range before the flow is measured.</p>
     <p>Classification against the inward normal (perpendicular to the edge, flipped towards the edge's centroid): slower than
       ${d.stationary_nm_per_s} nm/s → <span class="cls" style="--c:var(--c-stat)">stationary</span>; |cos(angle to normal)| &gt; ${d.direction_threshold}
       → <span class="cls" style="--c:var(--c-exp)">expanding</span> (outward) or <span class="cls" style="--c:var(--c-ret)">retracting</span>
@@ -64,7 +64,6 @@ python run_web.py      # http://127.0.0.1:8148</code></pre>
   </div>
   <div class="panel"><h2>Open points for the author</h2>
     <ul class="small">
-      <li>Optical flow: 16-bit PIEZO1 frames are cast to 8 bit with <code>astype(np.uint8)</code>, which wraps values above 255.</li>
       <li>Edge correspondence between frames pairs points by index from each edge's own start point (see Methods, step 3).</li>
       <li><code>CurvatureAnalyzer</code>'s circle-fit method (not used by the app) fits circles through the segment centroid and computes the
         radius from a dimensionless ratio; it is not offered here.</li>

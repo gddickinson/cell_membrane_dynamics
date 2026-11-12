@@ -6,6 +6,27 @@ import cv2
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 
+def frames_to_uint8(prev: np.ndarray, curr: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """8-bit copies of two consecutive frames for OpenCV's Lucas-Kanade flow.
+
+    uint8 frames are returned unchanged and float frames in 0..1 are multiplied by 255 (as before). Anything else
+    (e.g. 16-bit TIRF data) is scaled linearly from the pair's joint minimum..maximum to 0..255, so both frames share
+    one mapping (brightness constancy between them is kept) and values above 255 no longer wrap around.
+    """
+    if prev.dtype == np.uint8 and curr.dtype == np.uint8:
+        return prev, curr
+    if np.issubdtype(prev.dtype, np.floating) and np.issubdtype(curr.dtype, np.floating) \
+            and prev.max() <= 1.0 and curr.max() <= 1.0 and prev.min() >= 0 and curr.min() >= 0:
+        return (prev * 255).astype(np.uint8), (curr * 255).astype(np.uint8)
+    lo = float(min(prev.min(), curr.min()))
+    hi = float(max(prev.max(), curr.max()))
+    scale = 255.0 / (hi - lo) if hi > lo else 0.0
+
+    def conv(a):
+        return np.clip(np.round((a.astype(np.float64) - lo) * scale), 0, 255).astype(np.uint8)
+    return conv(prev), conv(curr)
+
+
 @dataclass
 class MembraneMotion:
     """Container for membrane motion data."""
@@ -107,11 +128,8 @@ class DynamicsTracker:
             prev_gray = prev_frame.copy()
             curr_gray = curr_frame.copy()
 
-        # Ensure images are uint8
-        if prev_gray.dtype != np.uint8:
-            prev_gray = (prev_gray * 255).astype(np.uint8) if prev_gray.max() <= 1.0 else prev_gray.astype(np.uint8)
-        if curr_gray.dtype != np.uint8:
-            curr_gray = (curr_gray * 255).astype(np.uint8) if curr_gray.max() <= 1.0 else curr_gray.astype(np.uint8)
+        # 8-bit for OpenCV, scaled by the pair's range (16-bit data used to wrap around at 256)
+        prev_gray, curr_gray = frames_to_uint8(prev_gray, curr_gray)
 
         # Calculate Lucas-Kanade optical flow for contour points
         contour_points = curr_contour.astype(np.float32)
@@ -251,11 +269,8 @@ class DynamicsTracker:
             prev_gray = prev_frame
             curr_gray = curr_frame
 
-        # Ensure images are uint8 format (important for OpenCV function)
-        if prev_gray.dtype != np.uint8:
-            prev_gray = (prev_gray * 255).astype(np.uint8) if prev_gray.max() <= 1.0 else prev_gray.astype(np.uint8)
-        if curr_gray.dtype != np.uint8:
-            curr_gray = (curr_gray * 255).astype(np.uint8) if curr_gray.max() <= 1.0 else curr_gray.astype(np.uint8)
+        # 8-bit for OpenCV, scaled by the pair's range (16-bit data used to wrap around at 256)
+        prev_gray, curr_gray = frames_to_uint8(prev_gray, curr_gray)
 
         # Create a mask around the contour to focus flow calculation
         mask = np.zeros_like(prev_gray)
