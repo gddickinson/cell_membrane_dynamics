@@ -165,6 +165,9 @@ class DynamicsTracker:
         # Resample contours to have the same number of points for simpler matching
         n_points = min(len(prev_contour), len(curr_contour))
         n_points = max(n_points, 100)  # Ensure reasonable minimum
+        # Never more points than the current contour: the velocities are paired index-by-index with the
+        # current contour's points, normals and optical flow (shorter contours used to raise IndexError).
+        n_points = min(n_points, len(curr_contour))
 
         prev_resampled = self._resample_contour(prev_contour, n_points)
         curr_resampled = self._resample_contour(curr_contour, n_points)
