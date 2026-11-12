@@ -125,6 +125,26 @@ def create_composite_image(image1: np.ndarray, image2: np.ndarray, alpha: float 
     blended = cv2.addWeighted(img1_8bit, alpha, img2_8bit, 1-alpha, 0)
     return blended
 
+def load_tiff_stack(path: str) -> Optional[List[np.ndarray]]:
+    """Read every 2D plane of a (multi-page) TIFF with tifffile, or None if it cannot be read.
+
+    Uses the file's first series, so stacks that tifffile stores as one shaped page (contiguous data) and
+    ImageJ hyperstacks are both split into their 2D planes in file order.
+    """
+    try:
+        import tifffile
+        with tifffile.TiffFile(path) as tif:
+            series = tif.series[0]
+            if series.axes.endswith('S'):  # RGB samples: leave to the single-image fallback
+                return None
+            data = series.asarray()
+    except Exception:
+        return None
+    if data.ndim == 2:
+        return [data]
+    return list(data.reshape(-1, data.shape[-2], data.shape[-1]))
+
+
 def load_tiff_sequence(first_file_path: str) -> List[np.ndarray]:
     """Load a sequence of TIFF images starting with the given file.
     
@@ -141,16 +161,9 @@ def load_tiff_sequence(first_file_path: str) -> List[np.ndarray]:
     filename = os.path.basename(first_file_path)
     
     # Try to load as multi-page TIFF first
-    try:
-        import tifffile
-        with tifffile.TiffFile(first_file_path) as tif:
-            num_pages = len(tif.pages)
-            if num_pages > 1:
-                # Load multi-page TIFF
-                return [page.asarray() for page in tif.pages]
-    except (ImportError, Exception):
-        # Fall back to searching for sequence
-        pass
+    stack = load_tiff_stack(first_file_path)
+    if stack is not None and len(stack) > 1:
+        return stack
     
     # Extract the numbering pattern from the filename
     match = re.search(r'(\d+)', filename)

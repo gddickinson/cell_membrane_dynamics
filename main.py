@@ -22,6 +22,7 @@ from src.analysis.dynamics_tracker import DynamicsTracker
 from src.analysis.optical_flow import OpticalFlowAnalyzer
 from src.analysis.correlation_analyzer import CorrelationAnalyzer, CorrelationData
 from src.analysis.curvature_analyzer import CurvatureAnalyzer
+from src.utils.image_utils import load_tiff_stack
 
 class MainWindow(QMainWindow):
     """Main window for membrane dynamics analysis application."""
@@ -460,6 +461,18 @@ class MainWindow(QMainWindow):
         """Load a sequence of images starting with the given file."""
         directory = os.path.dirname(first_file_path)
         filename = os.path.basename(first_file_path)
+
+        # A multi-page TIFF (e.g. a Micro-Manager MMStack) holds the whole sequence: load every page
+        # (cv2.imread below reads only the first page).
+        stack = load_tiff_stack(first_file_path)
+        if stack is not None and len(stack) > 1:
+            if is_mask:
+                self.masks = stack
+                self.mask_info_label.setText(f"Loaded: {filename} ({len(stack)} frames)")
+            else:
+                self.frames = stack
+                self.fluor_info_label.setText(f"Loaded: {filename} ({len(stack)} frames)")
+            return
 
         # Extract the numbering pattern from the filename
         import re
