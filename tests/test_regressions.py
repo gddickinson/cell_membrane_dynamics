@@ -36,15 +36,16 @@ def test_small_cell_dynamics_does_not_crash():
     assert len(motion.velocities) == len(motion.classifications) <= len(c2)
 
 
-def test_large_cell_dynamics_unchanged():
-    """The fix leaves contours with >= 100 points exactly as before (resampled to min(len(prev), len(curr)))."""
+def test_large_cell_dynamics_pairs_every_current_point():
+    """Velocities pair one-to-one with the current contour's points (arc-length-aligned matching since 2026-11-12;
+    before that, both contours were resampled to min(len(prev), len(curr)) points)."""
     ed = EdgeDetector()
     c1, c2 = ed.detect_edge(_disk(40, 200)), ed.detect_edge(_disk(42, 200))
     frame = np.zeros((200, 200), np.uint8)
     tr = DynamicsTracker(pixel_size=100.0)
     tr.analyze_frame(frame, c1)
     motion = tr.analyze_frame(frame, c2)
-    assert len(motion.velocities) == min(len(c1), len(c2))
+    assert len(motion.velocities) == len(c2)
 
 
 def test_curvature_motion_map_runs():

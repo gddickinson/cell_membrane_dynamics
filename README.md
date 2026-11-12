@@ -133,6 +133,12 @@ The application classifies membrane movement into four categories:
 
 Classification is based on the angle between velocity vectors and membrane normal vectors, along with magnitude thresholds.
 
+Edge points are matched between consecutive frames by arc-length-aligned correspondence: each point of the current
+edge is paired with the previous edge at the same fraction of the perimeter, shifted by the start-point offset that
+minimises the distance between matched points. (Until November 2026 points were paired by index from each edge's own
+start point, which made many points look "flowing"; results from earlier versions therefore have higher flowing
+fractions, e.g. 66 % vs 19 % on the synthetic demo stack of the web interface.)
+
 ### Curvature Calculation
 
 Curvature is calculated using:

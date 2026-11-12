@@ -1,57 +1,81 @@
 // Membrane dynamics and the per-sequence pipeline: a pure-JS port of src/analysis/dynamics_tracker.py (contour
 // tracking and movement classification) and src/analysis/pipeline.py (analyze_sequence), node-tested against Python.
 //
-// The browser runs the contour-tracking part of DynamicsTracker.analyze_frame. The Python tracker also blends in
+// The browser runs the contour-tracking part of DynamicsTracker.analyze_frame (arc-length-aligned matching of
+// consecutive edges). The Python tracker also blends in
 // Lucas-Kanade optical flow measured on the PIEZO1 channel (70 % flow, 30 % contour wherever flow is found); that
 // needs OpenCV and runs only on the local Python server. Without flow the Python result equals this one.
 // Units follow the Python code: positions in px, velocities in px/s, curvature in nm^-1.
 
-import { arcLength, curvature, curvatureStats, detectEdge, contourMetrics, normals } from './contour_engine.js';
+import { curvature, curvatureStats, detectEdge, contourMetrics, normals, npSum } from './contour_engine.js';
 import { pearson } from './stats_engine.js';
 
-const f32 = Math.fround;
 export const CLASSES = ['expanding', 'retracting', 'flowing', 'stationary'];
 export const STATIC_NM_PER_S = 10;       // below this speed a point is 'stationary' (dynamics_tracker.py)
 export const DIRECTION_THRESHOLD = 0.7;  // |cos(angle to normal)| above this is normal (expanding/retracting) motion
+export const MAX_OFFSETS = 512;          // candidate start-point offsets when matching consecutive contours
 
-// DynamicsTracker._find_point_at_distance
-function pointAtDistance(c, dist) {
-  let cur = 0;
-  for (let i = 0; i < c.length; i++) {
-    const a = c[i], b = c[(i + 1) % c.length], seg = Math.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2);
-    if (cur + seg >= dist) return [i, (dist - cur) / seg];
-    cur += seg;
-  }
-  return [c.length - 1, 0];
-}
-
-// DynamicsTracker._resample_contour: n points at equal arc-length steps from the first point (float32 output)
-export function resample(c, n) {
-  const per = arcLength(c), out = [];
+// dynamics_tracker.closed_arclength: cumulative arc length at each point, then the perimeter (n + 1 values)
+export function closedArclength(c) {
+  const n = c.length, s = new Float64Array(n + 1);
   for (let i = 0; i < n; i++) {
-    const [k, f] = pointAtDistance(c, i * per / n), a = c[k], b = c[(k + 1) % c.length];
-    out.push([f32(a[0] * (1 - f) + b[0] * f), f32(a[1] * (1 - f) + b[1] * f)]);
+    const a = c[i], b = c[(i + 1) % n], dx = b[0] - a[0], dy = b[1] - a[1];
+    s[i + 1] = s[i] + Math.sqrt(dx * dx + dy * dy);
   }
-  return out;
+  return s;
 }
 
-// Contour-tracking velocities (px/s) between consecutive contours, paired by index after resampling both to
-// min(len(prev), len(curr)) points (at least 100, never more than the current contour has).
+// np.interp(t, s, f) for increasing s (t inside [s[0], s[last]))
+function interp(t, s, f) {
+  let lo = 0, hi = s.length - 1;
+  if (t >= s[hi]) return f[hi];
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (s[mid] <= t) lo = mid; else hi = mid; }
+  const slope = (f[lo + 1] - f[lo]) / (s[lo + 1] - s[lo]);
+  return slope * (t - s[lo]) + f[lo];
+}
+
+// dynamics_tracker.points_at_arclength: points on the closed contour at arc lengths t, wrapped onto [0, P) like np.mod
+export function pointsAtArclength(c, s, t) {
+  const P = s[s.length - 1], fx = [...c.map(p => p[0]), c[0][0]], fy = [...c.map(p => p[1]), c[0][1]];
+  return t.map(v => { let w = v % P; if (w < 0) w += P; return [interp(w, s, fx), interp(w, s, fy)]; });
+}
+
+// dynamics_tracker.match_previous_points: arc-length-aligned correspondence with the start-point offset that
+// minimises the summed squared distance (best of MAX_OFFSETS candidates, refined by a parabola)
+export function matchPrevious(prev, curr) {
+  const sp = closedArclength(prev), sc = closedArclength(curr), Pp = sp[sp.length - 1], Pc = sc[sc.length - 1];
+  const u = Array.from(sc.subarray(0, curr.length), v => v / Pc * Pp);
+  const m = Math.min(prev.length, MAX_OFFSETS), step = Pp / m, cost = new Float64Array(m), sq = new Float64Array(2 * curr.length);
+  for (let j = 0; j < m; j++) {
+    const q = pointsAtArclength(prev, sp, u.map(v => v + j * step));
+    for (let i = 0; i < curr.length; i++) {
+      const dx = curr[i][0] - q[i][0], dy = curr[i][1] - q[i][1];
+      sq[2 * i] = dx * dx; sq[2 * i + 1] = dy * dy;
+    }
+    cost[j] = npSum(sq);
+  }
+  let k = 0;
+  for (let j = 1; j < m; j++) if (cost[j] < cost[k]) k = j;
+  const e0 = cost[(k - 1 + m) % m], e1 = cost[k], e2 = cost[(k + 1) % m], den = e0 - 2 * e1 + e2;
+  const delta = den > 0 ? Math.min(0.5, Math.max(-0.5, 0.5 * (e0 - e2) / den)) : 0;
+  return pointsAtArclength(prev, sp, u.map(v => v + (k + delta) * step));
+}
+
+// DynamicsTracker._track_contour_movement: one velocity (px/s) per current contour point
 export function trackContour(prev, curr, dt) {
-  const n = Math.min(Math.max(Math.min(prev.length, curr.length), 100), curr.length);
-  const a = resample(prev, n), b = resample(curr, n), d = f32(dt);
-  return b.map((p, i) => [f32(f32(p[0] - a[i][0]) / d), f32(f32(p[1] - a[i][1]) / d)]);
+  const q = matchPrevious(prev, curr);
+  return curr.map((p, i) => [(p[0] - q[i][0]) / dt, (p[1] - q[i][1]) / dt]);
 }
 
-const norm32 = v => f32(Math.sqrt(f32(f32(v[0] * v[0]) + f32(v[1] * v[1]))));
+const norm = v => Math.sqrt(v[0] * v[0] + v[1] * v[1]);
 
 // DynamicsTracker._classify_movements: velocities (px/s) against the inward normals of the current contour
 export function classify(vel, contour, pixelSizeNm) {
-  const nrm = normals(contour), thr = f32(STATIC_NM_PER_S / pixelSizeNm);
+  const nrm = normals(contour), thr = STATIC_NM_PER_S / pixelSizeNm;
   return vel.map((v, i) => {
-    const m = norm32(v);
+    const m = norm(v);
     if (m < thr) return 'stationary';
-    const d = f32(v[0] / m) * nrm[i][0] + f32(v[1] / m) * nrm[i][1];
+    const d = (v[0] / m) * nrm[i][0] + (v[1] / m) * nrm[i][1];
     if (Math.abs(d) > DIRECTION_THRESHOLD) return d > 0 ? 'retracting' : 'expanding';
     return 'flowing';
   });
@@ -71,7 +95,7 @@ export function correlate(contour, curv, vel, classes) {
 }
 
 export function motionStats(vel, classes) {
-  const mags = vel.map(norm32), n = mags.length, s = [...mags].sort((a, b) => a - b);
+  const mags = vel.map(norm), n = mags.length, s = [...mags].sort((a, b) => a - b);
   const mean = mags.reduce((a, b) => a + b, 0) / n;
   const counts = Object.fromEntries(CLASSES.map(c => [c, classes.filter(x => x === c).length]));
   return { mean_speed: mean, max_speed: s[n - 1], median_speed: n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2,
@@ -93,7 +117,7 @@ export function analyseSequence(masks, w, h, { pixelSizeNm = 100, dt = 1, sigma 
       motion: null, correlation: null };
     if (prev && i !== start) {
       const vel = trackContour(prev, contour, dt), classes = classify(vel, contour, pixelSizeNm);
-      fr.motion = { velocities: vel, magnitudes: vel.map(norm32), classes, stats: motionStats(vel, classes) };
+      fr.motion = { velocities: vel, magnitudes: vel.map(norm), classes, stats: motionStats(vel, classes) };
       if (curv.length === contour.length) fr.correlation = correlate(contour, curv, vel, classes);
     }
     prev = contour;

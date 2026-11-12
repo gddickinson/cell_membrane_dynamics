@@ -27,6 +27,48 @@ def frames_to_uint8(prev: np.ndarray, curr: np.ndarray) -> Tuple[np.ndarray, np.
     return conv(prev), conv(curr)
 
 
+MAX_OFFSETS = 512   # candidate start-point offsets tried when matching consecutive contours
+
+
+def closed_arclength(contour: np.ndarray) -> np.ndarray:
+    """Cumulative arc length (px) at each point of a closed contour, followed by the perimeter (length n + 1)."""
+    c = np.asarray(contour, dtype=float)
+    dx = np.diff(c[:, 0], append=c[0, 0])
+    dy = np.diff(c[:, 1], append=c[0, 1])
+    return np.concatenate([[0.0], np.cumsum(np.sqrt(dx * dx + dy * dy))])
+
+
+def points_at_arclength(contour: np.ndarray, s: np.ndarray, t: np.ndarray) -> np.ndarray:
+    """Points on the closed contour (linear between vertices) at arc lengths t (wrapped onto the perimeter)."""
+    c = np.asarray(contour, dtype=float)
+    t = np.mod(t, s[-1])
+    return np.column_stack([np.interp(t, s, np.append(c[:, 0], c[0, 0])),
+                            np.interp(t, s, np.append(c[:, 1], c[0, 1]))])
+
+
+def match_previous_points(prev: np.ndarray, curr: np.ndarray) -> np.ndarray:
+    """For each point of `curr`, the corresponding point on `prev` (arc-length-aligned correspondence).
+
+    Current point i at perimeter fraction f_i is matched to the previous contour at arc length
+    f_i * P_prev + offset. The offset is chosen from MAX_OFFSETS (or len(prev), if fewer) evenly spaced candidates
+    by minimum summed squared distance, then refined by a parabola through the best candidate and its neighbours.
+    """
+    curr = np.asarray(curr, dtype=float)
+    sp, sc = closed_arclength(prev), closed_arclength(curr)
+    u = sc[:-1] / sc[-1] * sp[-1]
+    m = min(len(prev), MAX_OFFSETS)
+    step = sp[-1] / m
+    cost = np.empty(m)
+    for j in range(m):
+        d = curr - points_at_arclength(prev, sp, u + j * step)
+        cost[j] = np.sum(d * d)
+    k = int(np.argmin(cost))
+    e0, e1, e2 = cost[(k - 1) % m], cost[k], cost[(k + 1) % m]
+    den = e0 - 2.0 * e1 + e2
+    delta = min(0.5, max(-0.5, 0.5 * (e0 - e2) / den)) if den > 0 else 0.0
+    return points_at_arclength(prev, sp, u + (k + delta) * step)
+
+
 @dataclass
 class MembraneMotion:
     """Container for membrane motion data."""
@@ -168,35 +210,21 @@ class DynamicsTracker:
         return velocities
 
     def _track_contour_movement(self, prev_contour: np.ndarray, curr_contour: np.ndarray) -> Dict:
-        """Track movement of contour points between frames.
+        """Track movement of contour points between frames by arc-length-aligned correspondence.
 
-        This implements point correspondence between contours in consecutive frames
-        using shape context and dynamic time warping for non-rigid alignment.
-
-        Args:
-            prev_contour: Contour from previous frame
-            curr_contour: Contour from current frame
+        Every point of the current contour is matched to the point of the previous contour at the same fraction of
+        the perimeter, shifted by the start-point offset that minimises the summed squared distance between the
+        matched points (see match_previous_points). Velocities therefore pair one-to-one with the current contour's
+        points and do not depend on where each contour happens to start. (Until 2026-11 point i of one resampled
+        contour was paired with point i of the other, which turned any shift of the start point into spurious
+        tangential "flowing" motion.)
 
         Returns:
-            Dictionary with points and their corresponding velocities
+            Dictionary with the current points, their velocities (px/s) and the matched previous points
         """
-        # Resample contours to have the same number of points for simpler matching
-        n_points = min(len(prev_contour), len(curr_contour))
-        n_points = max(n_points, 100)  # Ensure reasonable minimum
-        # Never more points than the current contour: the velocities are paired index-by-index with the
-        # current contour's points, normals and optical flow (shorter contours used to raise IndexError).
-        n_points = min(n_points, len(curr_contour))
-
-        prev_resampled = self._resample_contour(prev_contour, n_points)
-        curr_resampled = self._resample_contour(curr_contour, n_points)
-
-        # Calculate velocity vectors
-        velocities = (curr_resampled - prev_resampled) / self.time_delta
-
-        return {
-            "points": curr_resampled,
-            "velocities": velocities
-        }
+        matched = match_previous_points(prev_contour, curr_contour)
+        velocities = (np.asarray(curr_contour, dtype=float) - matched) / self.time_delta
+        return {"points": curr_contour, "velocities": velocities, "matched": matched}
 
     def _resample_contour(self, contour: np.ndarray, n_points: int) -> np.ndarray:
         """Resample contour to have specified number of points.

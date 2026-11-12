@@ -71,3 +71,40 @@ def test_optical_flow_on_16bit_frames_follows_the_shift():
     found = np.linalg.norm(v, axis=1) > 0
     assert found.mean() > 0.8
     assert np.median(v[found, 0]) == pytest.approx(3.0, abs=0.5) and abs(np.median(v[found, 1])) < 0.5
+
+
+# --- 3. edge correspondence between frames ------------------------------------------------------------------------
+
+def _motion(prev, curr, dt=1.0):
+    tr = DynamicsTracker(pixel_size=100.0)
+    tr.set_time_delta(dt)
+    frame = np.zeros((220, 220), np.uint8)
+    tr.analyze_frame(frame, prev)
+    return tr.analyze_frame(frame, curr)
+
+
+def test_unchanged_outline_with_a_different_start_point_is_stationary():
+    """Same circle, start point rotated by 37 degrees and a different point count: no motion."""
+    m = _motion(circle(40.0, n=250), circle(40.0, n=260, start=np.deg2rad(37)))
+    assert len(m.velocities) == 260
+    assert np.max(np.linalg.norm(m.velocities, axis=1)) < 0.05      # px/s
+    assert set(m.classifications) == {"stationary"}
+
+
+def test_expanding_circle_with_rotated_start_is_expanding():
+    """Radius 40 -> 42 px in 2 s (1 px/s outward) with the start point rotated: radial motion, not 'flowing'."""
+    m = _motion(circle(40.0, n=250), circle(42.0, n=264, start=np.deg2rad(123)), dt=2.0)
+    radial = (m.points - 100.0) / np.linalg.norm(m.points - 100.0, axis=1)[:, None]
+    vr = np.sum(m.velocities * radial, axis=1)
+    vt = np.abs(m.velocities[:, 0] * -radial[:, 1] + m.velocities[:, 1] * radial[:, 0])
+    assert np.allclose(vr, 1.0, atol=0.02) and vt.max() < 0.05
+    assert set(m.classifications) == {"expanding"}
+
+
+def test_velocities_pair_with_every_current_point():
+    ed = EdgeDetector()
+    yy, xx = np.mgrid[:200, :200]
+    a = ed.detect_edge((((xx - 100) ** 2 + (yy - 100) ** 2) < 45 ** 2).astype(np.uint8))
+    b = ed.detect_edge((((xx - 102) / 47.0) ** 2 + ((yy - 99) / 44.0) ** 2 < 1).astype(np.uint8))
+    m = _motion(a, b)
+    assert len(m.velocities) == len(m.classifications) == len(b)

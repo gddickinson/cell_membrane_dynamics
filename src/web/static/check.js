@@ -41,9 +41,8 @@ route('check', async () => {
   <p class="small mute">Mean curvature here is over all edge points. The desktop app's curvature statistics (and the tiles on the Analyse page) leave
     out points whose curvature is exactly 0 (three collinear points); whether a nearly straight stretch rounds to exactly 0 can differ between
     the engines, so those statistics agree to about 1–2 % rather than to rounding.</p>
-  <div class="panel small"><p>The engines agree to rounding, not bit for bit. OpenCV and NumPy do part of the work in single precision
-    (contour resampling, velocities), which the port reproduces with <code>Math.fround</code>; SciPy's compiled Gaussian filter may use fused
-    multiply-adds, so smoothed edge coordinates can differ in the last bit. The node test (<code>src/web/static/engine.test.mjs</code>, run by
+  <div class="panel small"><p>The engines agree to rounding, not bit for bit: SciPy's compiled Gaussian filter may use fused multiply-adds, so smoothed edge
+    coordinates can differ in the last bit; OpenCV's single-precision perimeter is reproduced with <code>Math.fround</code>. The node test (<code>src/web/static/engine.test.mjs</code>, run by
     <code>pytest tests/test_web.py</code>) compares raw contours exactly and smoothed contours, curvature, normals, metrics, velocities,
     movement classes, correlation, p-values and the kymograph with tight tolerances on 14 masks (random blobs and demo frames)
     and the whole demo sequence.</p></div>`;

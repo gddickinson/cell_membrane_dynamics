@@ -19,10 +19,12 @@ route('methods', async () => {
     <p><b>Sign.</b> Positive where the membrane is convex (bulging outward: a round cell is positive everywhere), negative where it is
       concave (indented towards the cell interior), whatever the order of the contour points.</p></div>
   <div class="panel"><h2>3 · Edge motion</h2>
-    <p><code>DynamicsTracker</code>: the previous and current edges are each resampled to n points at equal arc-length steps, starting from
-      their first point (n = the shorter edge's point count, at least 100, at most the current edge's count), and point i of one is paired
-      with point i of the other: velocity = displacement / frame interval. Because each edge starts at its top-left-most pixel, the pairing
-      is approximate when the edge rotates or that pixel jumps; tangential "flowing" motion is partly a result of this pairing.</p>
+    <p><code>DynamicsTracker</code>: each point of the current edge is matched to the previous edge at the same fraction of the perimeter,
+      shifted by the start-point offset that minimises the summed squared distance between matched points (best of up to 512 evenly spaced
+      offsets, refined by a parabola). Velocity = (current point − matched point) / frame interval, one per current edge point. The match does
+      not depend on where each edge starts, so a still or uniformly expanding outline shows no tangential motion. (Before 2026-11-12 the
+      code paired point i with point i after resampling both edges from their own start points, which made a large share of points
+      "flowing"; on the demo stack the flowing fraction drops from 66 % to 19 % with the new matching.)</p>
     <p>The Python pipeline then measures Lucas–Kanade optical flow (OpenCV) on the PIEZO1 frames at the edge points and, wherever flow is
       found, uses ${d.flow_weight} × flow + ${d.contour_weight} × contour velocity. That step needs OpenCV and runs only in the local app; without a
       PIEZO1 stack the result equals the browser's. 16-bit frames are scaled to 8 bit by the pair's joint intensity range before the flow is measured.</p>
@@ -32,8 +34,7 @@ route('methods', async () => {
       (inward); otherwise <span class="cls" style="--c:var(--c-flow)">flowing</span> along the edge.</p></div>
   <div class="panel"><h2>4 · Curvature vs motion</h2>
     <p>Velocity split into normal (positive = inward) and tangential components; Pearson r between curvature and normal velocity at each
-      edge point, with SciPy's two-sided p-value. Points along an edge are not independent, so p is optimistic. Velocities are paired with
-      edge points by index (see step 3).</p></div>
+      edge point, with SciPy's two-sided p-value. Points along an edge are not independent, so p is optimistic.</p></div>
   <div class="panel"><h2>5 · Kymograph</h2>
     <p><code>DynamicsTracker.create_kymograph</code>: for one contour point index and ± a window of neighbours, each frame's movement class as
       colour and speed / ${d.kymograph_full_scale_px_per_s} px/s as brightness. The point index is not tracked between frames: index k is the k-th
@@ -64,7 +65,6 @@ python run_web.py      # http://127.0.0.1:8148</code></pre>
   </div>
   <div class="panel"><h2>Open points for the author</h2>
     <ul class="small">
-      <li>Edge correspondence between frames pairs points by index from each edge's own start point (see Methods, step 3).</li>
       <li><code>CurvatureAnalyzer</code>'s circle-fit method (not used by the app) fits circles through the segment centroid and computes the
         radius from a dimensionless ratio; it is not offered here.</li>
     </ul></div>

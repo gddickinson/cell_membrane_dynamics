@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { contourMetrics, curvature, curvatureStats, detectEdge, normals } from './contour_engine.js';
-import { analyseSequence, kymograph } from './dynamics_engine.js';
+import { analyseSequence, classify, kymograph, trackContour } from './dynamics_engine.js';
 import { pearson } from './stats_engine.js';
 import { rleDecode } from './rle.js';
 
@@ -61,6 +61,14 @@ fx.edges.forEach((c, ci) => {
   closeArr(kr, k, 'reversed contour curvature', 1e-9, 1e-15);
 }
 
+// edge matching does not depend on where each contour starts: same circle, rotated start -> stationary
+{
+  const circ = (n, a0) => Array.from({ length: n }, (_, i) => { const t = a0 + 2 * Math.PI * i / n; return [100 + 40 * Math.cos(t), 100 + 40 * Math.sin(t)]; });
+  const a = circ(250, 0), b = circ(260, 37 * Math.PI / 180), v = trackContour(a, b, 1);
+  checks++;
+  if (Math.max(...v.map(x => Math.hypot(...x))) > 0.05 || classify(v, b, 100).some(c => c !== 'stationary')) fail('rotated-start circle not stationary');
+}
+
 const sq = fx.sequence, [h, w] = sq.shape;
 const masks = sq.rle.map(r => rleDecode(r, w * h));
 const res = analyseSequence(masks, w, h, { pixelSizeNm: sq.pixel_nm, dt: sq.dt, sigma: 1.0 });
@@ -71,16 +79,15 @@ sq.frames.forEach((py, i) => {
   const js = res.frames[i];
   close(js.frame, py.frame, `seq frame id ${i}`); close(js.contour.length, py.n, `seq frame ${i} n points`);
   if (!py.velocities) { checks++; if (js.motion) fail(`seq frame ${i}: js has motion, py none`); return; }
-  // resampled positions are float32 (as in OpenCV/NumPy); one float32 ulp of a ~100 px coordinate is 7.6e-6 px
-  closeArr(js.motion.velocities, py.velocities, `seq frame ${i} velocities`, 0, 2e-5 / sq.dt * 2);
+  closeArr(js.motion.velocities, py.velocities, `seq frame ${i} velocities`, 1e-9, 1e-9);
   py.classes.forEach((c, k) => { classTotal++; if (js.motion.classes[k] !== c) classDiff++; });
-  close(js.correlation.r, py.r, `seq frame ${i} r`, 1e-4, 1e-6);
-  close(js.correlation.p, py.p, `seq frame ${i} p`, 1e-4, 1e-9);
+  close(js.correlation.r, py.r, `seq frame ${i} r`, 1e-8, 1e-10);
+  close(js.correlation.p, py.p, `seq frame ${i} p`, 1e-7, 1e-12);
 });
 checks++;
 if (classDiff) fail(`movement classes differ at ${classDiff}/${classTotal} points`);
 const ky = kymograph(res.frames, 5, 10);
-closeArr(ky.flat(), sq.kymograph_p5_w10.flat(), 'kymograph', 1e-4, 1e-6);
+closeArr(ky.flat(), sq.kymograph_p5_w10.flat(), 'kymograph', 1e-8, 1e-10);
 
 fx.pearson.forEach((c, i) => {
   const { r, p } = pearson(c.x, c.y);
