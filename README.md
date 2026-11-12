@@ -142,8 +142,10 @@ Curvature is calculated using:
 3. **Spline**: Fitting and analyzing smooth spline curves
 
 The curvature sign convention is:
-- Positive curvature: Membrane curved toward cell interior (concave)
-- Negative curvature: Membrane curved toward cell exterior (convex)
+- Positive curvature: membrane convex, bulging outward (a round cell is positive everywhere)
+- Negative curvature: membrane concave, indented toward the cell interior
+
+The sign does not depend on the order of the contour points.
 
 ### Optical Flow Analysis
 

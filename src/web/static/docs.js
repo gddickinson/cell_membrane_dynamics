@@ -15,10 +15,9 @@ route('methods', async () => {
       pixel (OpenCV convention).</p></div>
   <div class="panel"><h2>2 · Curvature</h2>
     <p>Finite differences over each point and its two neighbours: κ = −(x′y″ − y′x″) / (x′² + y′²)^{3/2}, divided by the pixel size, so in
-      nm⁻¹ (shown here ×1000 as µm⁻¹). A circle of radius R µm gives |κ| ≈ 1/R µm⁻¹. Statistics leave out points where κ is exactly 0.</p>
-    <p><b>Sign.</b> The README and code comments say positive = concave (curved towards the cell interior), negative = convex. With the point
-      order OpenCV returns, a round (convex) cell actually comes out <b>positive</b>; read the sign accordingly. This is listed for the author
-      to decide; the web app reports the code's numbers unchanged.</p></div>
+      nm⁻¹ (shown here ×1000 as µm⁻¹). A circle of radius R µm gives κ ≈ 1/R µm⁻¹. Statistics leave out points where κ is exactly 0.</p>
+    <p><b>Sign.</b> Positive where the membrane is convex (bulging outward: a round cell is positive everywhere), negative where it is
+      concave (indented towards the cell interior), whatever the order of the contour points.</p></div>
   <div class="panel"><h2>3 · Edge motion</h2>
     <p><code>DynamicsTracker</code>: the previous and current edges are each resampled to n points at equal arc-length steps, starting from
       their first point (n = the shorter edge's point count, at least 100, at most the current edge's count), and point i of one is paired
@@ -65,7 +64,6 @@ python run_web.py      # http://127.0.0.1:8148</code></pre>
   </div>
   <div class="panel"><h2>Open points for the author</h2>
     <ul class="small">
-      <li>Curvature sign: a convex outline gives positive curvature, while the README and comments say negative = convex.</li>
       <li>Optical flow: 16-bit PIEZO1 frames are cast to 8 bit with <code>astype(np.uint8)</code>, which wraps values above 255.</li>
       <li>Edge correspondence between frames pairs points by index from each edge's own start point (see Methods, step 3).</li>
       <li><code>CurvatureAnalyzer</code>'s circle-fit method (not used by the app) fits circles through the segment centroid and computes the

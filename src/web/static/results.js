@@ -117,7 +117,7 @@ function toCsv(res, data) {
   const head = [`# PIEZO1 Membrane Dynamics Tracker web app; engine: ${res.engine}${res.optical_flow ? ' + optical flow' : ''}`,
     `# data: ${data.label}${data.synthetic ? ' (synthetic demo, not real data)' : ''}`,
     `# pixel_size_um_per_px: ${u} (${p.scale_source || ''}); frame_interval_s: ${p.frame_s}; edge_smoothing_sigma: ${p.sigma}`,
-    '# frame numbers start at 1; x/y: pixel-centre coordinates (OpenCV convention); curvature sign as in the repo code; normal velocity > 0 = inward',
+    '# frame numbers start at 1; x/y: pixel-centre coordinates (OpenCV convention); curvature > 0 = convex; normal velocity > 0 = inward',
     'frame,point_idx,x_px,y_px,x_um,y_um,curvature_per_um,velocity_x_um_s,velocity_y_um_s,speed_um_s,normal_velocity_um_s,classification'];
   const rows = [];
   for (const fr of res.frames) {

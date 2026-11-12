@@ -54,6 +54,13 @@ fx.edges.forEach((c, ci) => {
   }
 });
 
+// sign does not depend on point order: reversing a contour reverses its curvature array, values unchanged
+{
+  const c = fx.edges[0]['s1.0'].contour, k = Array.from(curvature(c, fx.pixel_nm));
+  const rev = [...c].reverse(), kr = Array.from(curvature(rev, fx.pixel_nm)).reverse();
+  closeArr(kr, k, 'reversed contour curvature', 1e-9, 1e-15);
+}
+
 const sq = fx.sequence, [h, w] = sq.shape;
 const masks = sq.rle.map(r => rleDecode(r, w * h));
 const res = analyseSequence(masks, w, h, { pixelSizeNm: sq.pixel_nm, dt: sq.dt, sigma: 1.0 });

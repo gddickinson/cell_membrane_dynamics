@@ -4,7 +4,7 @@
 //
 // Conventions: images are row-major (y, x); contour points are [x, y] in pixel units with the origin at the centre of
 // the top-left pixel (OpenCV's convention); curvature is returned in nm^-1 like the Python code (the pages convert to
-// µm^-1). Float32 arithmetic that OpenCV/NumPy does in single precision is reproduced with Math.fround.
+// µm^-1), positive where the outline is convex. Float32 arithmetic that OpenCV/NumPy does in single precision is reproduced with Math.fround.
 
 export const BORDER_MARGIN = 30;   // px zeroed around the image before edge detection (edge_detection.py)
 export const MIN_SIZE = 100;       // px; smaller objects are removed (remove_small_objects, 4-connectivity)
@@ -139,15 +139,23 @@ export function detectEdge(mask, w, h, { sigma = 1.0, margin = BORDER_MARGIN, mi
   return { contour: sigma > 0 ? smoothContour(best, sigma) : best.map(p => [p[0], p[1]]), raw: best, prepared };
 }
 
-// Finite-difference curvature (nm^-1; pixelSizeNm = nm per pixel). Sign as in the Python code: -(x'y'' - y'x'')/|r'|^3
+// +1 for OpenCV's outer-contour point order (negative shoelace sum in image x/y), -1 for the reverse
+export function orientationSign(pts) {
+  let a = 0;
+  for (let i = 0, n = pts.length; i < n; i++) { const p = pts[i], q = pts[(i + 1) % n]; a += p[0] * q[1] - q[0] * p[1]; }
+  return a > 0 ? -1 : 1;
+}
+
+// Finite-difference curvature (nm^-1; pixelSizeNm = nm per pixel), CurvatureAnalyzer._finite_difference_curvature:
+// -(x'y'' - y'x'')/|r'|^3 times the orientation sign, so a convex outline is positive whatever the point order
 export function curvature(pts, pixelSizeNm) {
-  const n = pts.length, out = new Float64Array(n);
+  const n = pts.length, out = new Float64Array(n), o = orientationSign(pts);
   for (let i = 0; i < n; i++) {
     const p = pts[(i - 1 + n) % n], c = pts[i], q = pts[(i + 1) % n];
     const dx1 = c[0] - p[0], dy1 = c[1] - p[1], dx2 = q[0] - c[0], dy2 = q[1] - c[1];
     const dx = (dx1 + dx2) / 2, dy = (dy1 + dy2) / 2, d2x = dx2 - dx1, d2y = dy2 - dy1;
     const num = dx * d2y - dy * d2x, den = (dx ** 2 + dy ** 2) ** 1.5;
-    out[i] = Math.abs(den) > 1e-10 ? -num / den / pixelSizeNm : 0;
+    out[i] = Math.abs(den) > 1e-10 ? -num / den / pixelSizeNm * o : 0;
   }
   return out;
 }

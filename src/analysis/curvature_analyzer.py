@@ -5,8 +5,20 @@ import numpy as np
 from typing import Optional, List, Dict, Tuple
 from scipy.interpolate import splprep, splev
 
+def orientation_sign(contour: np.ndarray) -> float:
+    """+1 for closed contours ordered like OpenCV's outer contours (negative shoelace sum in image x/y), -1 for the
+    opposite order. Curvatures are multiplied by it so that a convex outline is positive whatever the point order."""
+    x, y = contour[:, 0], contour[:, 1]
+    twice_area = np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y)
+    return -1.0 if twice_area > 0 else 1.0
+
+
 class CurvatureAnalyzer:
-    """Class for analyzing membrane curvature."""
+    """Class for analyzing membrane curvature.
+
+    Sign convention (all methods): positive where the membrane is convex (bulging outward, e.g. everywhere on a round
+    cell), negative where it is concave (indented towards the cell interior). Units: nm^-1.
+    """
 
     def __init__(self, pixel_size: float = 100.0, segment_length: int = 9):
         """Initialize the curvature analyzer.
@@ -53,7 +65,8 @@ class CurvatureAnalyzer:
         """
         n_points = len(contour)
         curvatures = np.zeros(n_points)
-        
+        orient = orientation_sign(contour)
+
         for i in range(n_points):
             # Use points before and after for curvature calculation
             # with circular indexing for closed contours
@@ -85,9 +98,8 @@ class CurvatureAnalyzer:
                 denom = (dx**2 + dy**2)**(1.5)
                 
                 if abs(denom) > 1e-10:
-                    # Curvature with sign (negative = convex, positive = concave)
-                    # Convert to physical units (nm^-1)
-                    curvatures[i] = -num / denom / self.pixel_size
+                    # Signed curvature (positive = convex), in nm^-1
+                    curvatures[i] = -num / denom / self.pixel_size * orient
                 else:
                     curvatures[i] = 0
             except:
@@ -244,9 +256,8 @@ class CurvatureAnalyzer:
                 denominator = (dx_dt**2 + dy_dt**2)**(1.5)
                 
                 if abs(denominator) > 1e-10:
-                    # Convert to physical units (nm^-1) and apply sign convention
-                    # (positive = concave, negative = convex)
-                    curvatures[i] = -numerator / denominator / self.pixel_size
+                    # Convert to physical units (nm^-1); positive = convex
+                    curvatures[i] = -numerator / denominator / self.pixel_size * orientation_sign(contour)
                 else:
                     curvatures[i] = 0
             
